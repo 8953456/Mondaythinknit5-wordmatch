@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>单词消消乐</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #ffe6e6;
+            font-family: 'Comic Sans MS', cursive;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #ff6b6b;
+            text-shadow: 2px 2px #fff;
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+            font-size: 24px;
+            color: #4a4a4a;
+        }
+
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            perspective: 1000px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 15px;
+            padding: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            aspect-ratio: 1;
+            transition: transform 0.3s, background 0.3s;
+            transform-style: preserve-3d;
+        }
+
+        .card.selected {
+            background: #90EE90;
+            transform: scale(0.95);
+        }
+
+        .card.wrong {
+            animation: shake 0.5s;
+            background: #FFB6C1;
+        }
+
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(10px); }
+            50% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+            100% { transform: translateX(0); }
+        }
+
+        .result {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.2);
+            text-align: center;
+            z-index: 100;
+        }
+
+        .congrats {
+            font-size: 40px;
+            color: #ff6b6b;
+            margin: 20px 0;
+        }
+
+        button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 20px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        .firework {
+            position: fixed;
+            width: 10px;
+            height: 10px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            animation: firework 1s ease-out;
+        }
+
+        @keyframes firework {
+            0% { transform: scale(0); opacity: 1; }
+            100% { transform: scale(20); opacity: 0; }
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐻单词消消乐🎉</h1>
+        <div class="game-info">
+            <div>⏰ <span id="timer">00:00</span></div>
+            <div>❌ <span id="errors">0</span>/5</div>
+        </div>
+        <div id="game-board" class="game-board"></div>
+        <div id="result" class="result hidden">
+            <div class="congrats">🎉 太棒了！ 🎉</div>
+            <div>用时：<span id="final-time">00:00</span></div>
+            <button id="restart">🔄 再来一次</button>
+        </div>
+    </div>
+
+    <script>
+        const words = [
+            { en: 'tradition', zh: '传统' },
+            { en: 'all over the world', zh: '世界各地' },
+            { en: 'special', zh: '特别的' },
+            { en: 'event', zh: '事件' },
+            { en: 'called', zh: '被称为' },
+            { en: 'meet', zh: '遇见' },
+            { en: 'present', zh: '礼物' },
+            { en: 'life', zh: '生活' },
+            { en: 'large', zh: '大的' },
+            { en: 'sweet', zh: '甜的' },
+            { en: 'find', zh: '发现' },
+            { en: 'dead', zh: '死的' },
+            { en: 'put', zh: '放' },
+            { en: 'culture', zh: '文化' },
+            { en: 'look after', zh: '照顾' },
+            { en: 'feed', zh: '喂养' },
+            { en: 'each other', zh: '互相' },
+            { en: 'take', zh: '拿' },
+            { en: 'circle', zh: '圆圈' }
+        ];
+
+        let currentGroup = 0;
+        let selectedCards = [];
+        let errors = 0;
+        let timer = null;
+        let startTime = null;
+        let isGameActive = false;
+
+        function createGroups() {
+            const groups = [];
+            for (let i = 0; i < words.length; i += 8) {
+                const group = words.slice(i, i + 8);
+                groups.push(group.flatMap(pair => [
+                    { text: pair.en, type: 'en', id: pair.en },
+                    { text: pair.zh, type: 'zh', id: pair.en }
+                ]));
+            }
+            return groups;
+        }
+
+        const allGroups = createGroups();
+
+        function initGame() {
+            const gameBoard = document.getElementById('game-board');
+            gameBoard.innerHTML = '';
+            
+            allGroups[currentGroup].sort(() => Math.random() - 0.5).forEach(card => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.textContent = card.text;
+                div.dataset.id = card.id;
+                div.dataset.type = card.type;
+                div.addEventListener('click', () => handleClick(div));
+                gameBoard.appendChild(div);
+            });
+        }
+
+        function handleClick(card) {
+            if (!isGameActive) {
+                startTime = Date.now();
+                timer = setInterval(updateTimer, 1000);
+                isGameActive = true;
+            }
+
+            if (card.classList.contains('selected') || selectedCards.length === 2) return;
+
+            card.classList.add('selected');
+            selectedCards.push(card);
+
+            if (selectedCards.length === 2) {
+                setTimeout(checkMatch, 500);
+            }
+        }
+
+        function checkMatch() {
+            const [card1, card2] = selectedCards;
+            const isMatch = card1.dataset.id === card2.dataset.id;
+
+            if (isMatch) {
+                card1.style.visibility = 'hidden';
+                card2.style.visibility = 'hidden';
+                checkWin();
+            } else {
+                errors++;
+                document.getElementById('errors').textContent = errors;
+                card1.classList.add('wrong');
+                card2.classList.add('wrong');
+                setTimeout(() => {
+                    card1.classList.remove('selected', 'wrong');
+                    card2.classList.remove('selected', 'wrong');
+                }, 500);
+
+                if (errors >= 5) gameOver();
+            }
+            selectedCards = [];
+        }
+
+        function checkWin() {
+            const remaining = document.querySelectorAll('.card:not([style*="hidden"])').length;
+            if (remaining === 0) {
+                currentGroup++;
+                if (currentGroup < allGroups.length) {
+                    setTimeout(initGame, 1000);
+                } else {
+                    gameComplete();
+                }
+            }
+        }
+
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const seconds = String(elapsed % 60).padStart(2, '0');
+            document.getElementById('timer').textContent = `${minutes}:${seconds}`;
+        }
+
+        function gameComplete() {
+            clearInterval(timer);
+            document.getElementById('final-time').textContent = document.getElementById('timer').textContent;
+            document.getElementById('result').classList.remove('hidden');
+            createFireworks();
+        }
+
+        function gameOver() {
+            clearInterval(timer);
+            document.querySelector('.congrats').textContent = '游戏结束！';
+            document.getElementById('result').classList.remove('hidden');
+        }
+
+        function createFireworks() {
+            for (let i = 0; i < 20; i++) {
+                const firework = document.createElement('div');
+                firework.className = 'firework';
+                firework.style.left = Math.random() * 100 + '%';
+                firework.style.top = Math.random() * 100 + '%';
+                document.body.appendChild(firework);
+                setTimeout(() => firework.remove(), 1000);
+            }
+        }
+
+        document.getElementById('restart').addEventListener('click', () => {
+            currentGroup = 0;
+            errors = 0;
+            isGameActive = false;
+            document.getElementById('errors').textContent = '0';
+            document.getElementById('result').classList.add('hidden');
+            clearInterval(timer);
+            document.getElementById('timer').textContent = '00:00';
+            initGame();
+        });
+
+        initGame();
+    </script>
+</body>
+</html>
